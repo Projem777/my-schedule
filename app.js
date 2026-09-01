@@ -7,7 +7,7 @@
   var STORAGE_KEY = "my_schedule_tasks_v1";
   var CONFIG_KEY = "my_schedule_sync_config_v1";
   var SHEET_TAB = "Sheet1";
-  var SHEET_HEADERS = ["ID_แผนงาน", "ชื่องาน", "กลุ่ม", "ลำดับสำคัญ", "สถานะงาน", "ความคืบหน้า", "เริ่มตามแผน", "สิ้นสุดตามแผน"];
+  var SHEET_HEADERS = ["ID_แผนงาน", "ชื่องาน", "กลุ่ม", "ลำดับสำคัญ", "สถานะงาน", "ความคืบหน้า", "เริ่มตามแผน", "สิ้นสุดตามแผน", "โครงการอ้างอิง"];
 
   var GROUPS = [
     { key: "งานประจำ", color: "#F5A623" },
@@ -41,6 +41,8 @@
     cloud: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-1-8.89A6 6 0 0 1 17.5 8.5 4 4 0 0 1 17.5 19z"/></svg>',
     cloudOff: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-1-8.89A6 6 0 0 1 17.5 8.5 4 4 0 0 1 17.5 19z"/><path d="M3 3l18 18"/></svg>',
     sync: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.3M3 12a9 9 0 0 1 15.5-6.3M3 3v6h6M21 21v-6h-6"/></svg>',
+    camera: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    pdf: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>',
   };
 
   /* ---------------- helpers ---------------- */
@@ -54,6 +56,12 @@
     return dateKeyOf(dt);
   }
   function localDT(dateKey, hour) { return dateKey + "T" + pad(hour) + ":00"; }
+  function addHoursToDT(dtStr, hours) {
+    var d = new Date(dtStr);
+    if (isNaN(d.getTime())) return dtStr;
+    d.setHours(d.getHours() + hours);
+    return dateKeyOf(d) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
   function displayDate(dateKey) { var p = dateKey.split("-"); return p[2] + "/" + p[1] + "/" + p[0]; }
   function weekdayLabel(dateKey) { var p = dateKey.split("-").map(Number); return WEEKDAYS[new Date(p[0], p[1] - 1, p[2]).getDay()]; }
   function timeOf(dt) { return dt ? dt.slice(11, 16) : ""; }
@@ -77,12 +85,12 @@
   function seedTasks() {
     var t = todayKey(), tmr = addDays(t, 1), soon = addDays(t, 3), past = addDays(t, -2);
     return [
-      { id: uid(), name: "ประชุมทบทวนแผนการผลิต", group: "งานประจำ", priority: 1, status: "กำลังดำเนินการ", progress: 40, start: localDT(t, 9), end: localDT(t, 10) },
-      { id: uid(), name: "นำเสนอแนวทางใช้ AI ลดเวลาทำงาน", group: "งานพัฒนา", priority: 2, status: "ทำเสร็จแล้ว", progress: 100, start: localDT(t, 13), end: localDT(t, 14) },
-      { id: uid(), name: "ตรวจสอบเอกสารส่งลูกค้า", group: "งานบริหาร", priority: 1, status: "กำลังดำเนินการ", progress: 65, start: localDT(tmr, 10), end: localDT(tmr, 11) },
-      { id: uid(), name: "สรุปยอดขายประจำเดือน", group: "งานรายงาน", priority: 3, status: "กำลังดำเนินการ", progress: 20, start: localDT(soon, 14), end: localDT(soon, 15) },
-      { id: uid(), name: "แก้ปัญหาสายการผลิตหยุดกะทันหัน", group: "งานแก้ปัญหา", priority: 1, status: "กำลังดำเนินการ", progress: 50, start: localDT(past, 8), end: localDT(past, 9) },
-      { id: uid(), name: "อัปเดตแผนโปรเจกต์ระบบใหม่", group: "Project", priority: 2, status: "กำลังดำเนินการ", progress: 30, start: localDT(soon, 9), end: localDT(soon, 12) },
+      { id: uid(), name: "ประชุมทบทวนแผนการผลิต", group: "งานประจำ", priority: 1, status: "กำลังดำเนินการ", start: localDT(t, 9), end: localDT(t, 10), project: "อัปเดตแผนโปรเจกต์ระบบใหม่" },
+      { id: uid(), name: "นำเสนอแนวทางใช้ AI ลดเวลาทำงาน", group: "งานพัฒนา", priority: 2, status: "ทำเสร็จแล้ว", start: localDT(t, 13), end: localDT(t, 14), project: "" },
+      { id: uid(), name: "ตรวจสอบเอกสารส่งลูกค้า", group: "งานบริหาร", priority: 1, status: "กำลังดำเนินการ", start: localDT(tmr, 10), end: localDT(tmr, 11), project: "" },
+      { id: uid(), name: "สรุปยอดขายประจำเดือน", group: "งานรายงาน", priority: 3, status: "กำลังดำเนินการ", start: localDT(soon, 14), end: localDT(soon, 15), project: "" },
+      { id: uid(), name: "แก้ปัญหาสายการผลิตหยุดกะทันหัน", group: "งานแก้ปัญหา", priority: 1, status: "กำลังดำเนินการ", start: localDT(past, 8), end: localDT(past, 9), project: "" },
+      { id: uid(), name: "อัปเดตแผนโปรเจกต์ระบบใหม่", group: "Project", priority: 2, status: "กำลังดำเนินการ", start: localDT(soon, 9), end: localDT(soon, 12), project: "" },
     ];
   }
 
@@ -96,6 +104,7 @@
     year: now.getFullYear(),
     modal: null, // { isNew, draft, confirmDel, error }
     settingsOpen: false,
+    report: null, // { from, to } when the PDF export modal is open
     sync: {
       clientId: "",
       spreadsheetId: "",
@@ -127,7 +136,14 @@
   function loadTasks() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) { state.tasks = JSON.parse(raw); return; }
+      if (raw) {
+        state.tasks = JSON.parse(raw).map(function (t) {
+          if (!t.photos) { t.photos = t.photo ? [t.photo] : []; }
+          delete t.photo;
+          return t;
+        });
+        return;
+      }
     } catch (e) {}
     state.tasks = seedTasks();
     saveTasksCache();
@@ -145,7 +161,17 @@
   /* ---------------- Google Sheets sync ---------------- */
   var tokenClient = null;
 
-  function taskToRow(t) { return [t.id, t.name, t.group, t.priority, t.status, t.progress, t.start, t.end]; }
+  function computeProgress(t) {
+    if (t.status === "ทำเสร็จแล้ว") return 100;
+    if (t.status === "ยกเลิก") return 0;
+    var s = new Date(t.start).getTime(), e = new Date(t.end).getTime(), n = Date.now();
+    if (!isFinite(s) || !isFinite(e) || e <= s) return 0;
+    if (n <= s) return 0;
+    if (n >= e) return 100;
+    return Math.round(((n - s) / (e - s)) * 100);
+  }
+
+  function taskToRow(t) { return [t.id, t.name, t.group, t.priority, t.status, computeProgress(t), t.start, t.end, t.project || ""]; }
   function rowToTask(r) {
     return {
       id: r[0] || uid(),
@@ -153,9 +179,9 @@
       group: r[2] || GROUPS[0].key,
       priority: Number(r[3]) || 1,
       status: r[4] || "กำลังดำเนินการ",
-      progress: Number(r[5]) || 0,
       start: r[6] || localDT(todayKey(), 9),
       end: r[7] || localDT(todayKey(), 10),
+      project: r[8] || "",
     };
   }
 
@@ -223,7 +249,7 @@
 
   function pullFromSheet() {
     state.sync.syncing = true; render();
-    sheetsFetch("/values/" + encodeURIComponent(SHEET_TAB + "!A:H"))
+    sheetsFetch("/values/" + encodeURIComponent(SHEET_TAB + "!A:I"))
       .then(function (data) {
         var rows = (data.values || []).slice();
         if (rows.length && rows[0][0] === SHEET_HEADERS[0]) rows = rows.slice(1);
@@ -292,6 +318,11 @@
     return html + "</div>";
   }
 
+  function photoBadge(t) {
+    if (!t.photos || !t.photos.length) return "";
+    return "📷" + (t.photos.length > 1 ? "×" + t.photos.length : "") + " ";
+  }
+
   function taskRowHTML(t, showDate) {
     var sColor = statusColor(t.status), gColor = groupColor(t.group);
     var cancelled = t.status === "ยกเลิก";
@@ -299,12 +330,13 @@
       '<button class="ms-taskrow" data-action="open-task" data-id="' + t.id + '">' +
         '<span class="ms-taskrow-dot" style="background:' + gColor + '"></span>' +
         '<div class="ms-taskrow-body">' +
-          '<div class="ms-taskrow-name' + (cancelled ? " cancelled" : "") + '">' + esc(t.name) + "</div>" +
+          '<div class="ms-taskrow-name' + (cancelled ? " cancelled" : "") + '">' + photoBadge(t) + esc(t.name) + "</div>" +
           '<div class="ms-taskrow-meta">' +
             (showDate ? '<span class="ms-taskrow-date">' + displayDate(t.start.slice(0, 10)) + " · " + timeOf(t.start) + "</span>" : "") +
             '<span class="ms-taskrow-tag" style="color:' + sColor + ";border-color:" + sColor + "55;background:" + sColor + '14">' + esc(t.status) + "</span>" +
+            (t.project ? '<span class="ms-taskrow-tag" style="color:#3B82F6;border-color:#3B82F655;background:#3B82F614">📁 ' + esc(t.project) + "</span>" : "") +
           "</div>" +
-          dotProgress(t.progress, sColor, cancelled) +
+          dotProgress(computeProgress(t), sColor, cancelled) +
         "</div>" +
       "</button>"
     );
@@ -417,12 +449,13 @@
             '<div class="ms-day-item-time">' + timeOf(t.start) + "<span>–" + timeOf(t.end) + "</span></div>" +
             '<div class="ms-day-item-bar" style="background:' + groupColor(t.group) + '"></div>' +
             '<div class="ms-day-item-body">' +
-              '<div class="ms-taskrow-name' + (cancelled ? " cancelled" : "") + '">' + esc(t.name) + "</div>" +
+              '<div class="ms-taskrow-name' + (cancelled ? " cancelled" : "") + '">' + photoBadge(t) + esc(t.name) + "</div>" +
               '<div class="ms-taskrow-meta">' +
                 '<span class="ms-taskrow-tag" style="color:' + groupColor(t.group) + ";border-color:" + groupColor(t.group) + "55;background:" + groupColor(t.group) + '14">' + esc(t.group) + "</span>" +
                 '<span class="ms-taskrow-tag" style="color:' + statusColor(t.status) + ";border-color:" + statusColor(t.status) + "55;background:" + statusColor(t.status) + '14">' + esc(t.status) + "</span>" +
+                (t.project ? '<span class="ms-taskrow-tag" style="color:#3B82F6;border-color:#3B82F655;background:#3B82F614">📁 ' + esc(t.project) + "</span>" : "") +
               "</div>" +
-              dotProgress(t.progress, statusColor(t.status), cancelled) +
+              dotProgress(computeProgress(t), statusColor(t.status), cancelled) +
             "</div>" +
           "</button>";
       });
@@ -508,7 +541,7 @@
   /* ---------------- modal ---------------- */
   function emptyDraft(prefillDate) {
     var dk = prefillDate || todayKey();
-    return { id: null, name: "", group: GROUPS[0].key, priority: 1, status: "กำลังดำเนินการ", progress: 50, start: localDT(dk, 9), end: localDT(dk, 10) };
+    return { id: null, name: "", group: GROUPS[0].key, priority: 1, status: "กำลังดำเนินการ", start: localDT(dk, 8), end: localDT(dk, 10), project: "", photos: [] };
   }
 
   function renderModal() {
@@ -529,8 +562,41 @@
     }).join("");
 
     var progressField = d.status === "กำลังดำเนินการ"
-      ? '<label class="ms-field"><span class="ms-label" id="progress-label">ความคืบหน้า — ' + d.progress + '%</span><input class="ms-range" type="range" min="0" max="100" step="5" value="' + d.progress + '" data-action="set-progress" /></label>'
+      ? '<div class="ms-field"><span class="ms-label">ความคืบหน้า (คำนวณจากเวลาอัตโนมัติ)</span>' + dotProgress(computeProgress(d), statusColor(d.status), false) + '<div class="ms-progress-note">' + computeProgress(d) + '% ของช่วงเวลาที่วางแผนไว้ผ่านไปแล้ว</div></div>'
       : "";
+
+    var nameOptions = [];
+    var seenNames = {};
+    state.tasks.forEach(function (t) {
+      if (t.name && !seenNames[t.name]) { seenNames[t.name] = true; nameOptions.push(t.name); }
+    });
+    var nameDatalist = '<datalist id="task-name-list">' + nameOptions.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + "</datalist>";
+
+    var projectNames = [];
+    var seenProj = {};
+    state.tasks.forEach(function (t) {
+      if (t.group === "Project" && t.name && !seenProj[t.name]) { seenProj[t.name] = true; projectNames.push(t.name); }
+    });
+    var projectField = d.group !== "Project"
+      ? '<label class="ms-field"><span class="ms-label">โครงการอ้างอิง (ถ้ามี)</span><select class="ms-input" data-field="project">' +
+          '<option value="">— ไม่ระบุ —</option>' +
+          projectNames.map(function (p) { return '<option value="' + esc(p) + '"' + (d.project === p ? " selected" : "") + ">" + esc(p) + "</option>"; }).join("") +
+          (d.project && projectNames.indexOf(d.project) === -1 ? '<option value="' + esc(d.project) + '" selected>' + esc(d.project) + "</option>" : "") +
+        "</select></label>"
+      : "";
+
+    var photos = d.photos || [];
+    var thumbs = photos.map(function (src, i) {
+      return '<div class="ms-photo-thumb"><img src="' + src + '" alt="" /><button type="button" class="ms-icon-btn ms-photo-thumb-remove" data-action="remove-photo" data-index="' + i + '">' + ICONS.x + "</button></div>";
+    }).join("");
+    var photoField =
+      '<div class="ms-field"><span class="ms-label">รูปประกอบ (' + photos.length + '/6)</span>' +
+        '<div class="ms-photo-grid">' + thumbs +
+          (photos.length < 6
+            ? '<label class="ms-photo-add">' + ICONS.camera + '<span>เพิ่มรูป</span><input type="file" accept="image/*" capture="environment" multiple data-action="pick-photo" style="display:none" /></label>'
+            : "") +
+        "</div>" +
+      "</div>";
 
     var footLeft;
     if (isNew) {
@@ -546,8 +612,9 @@
         '<div class="ms-modal">' +
           '<div class="ms-modal-head"><span>' + (isNew ? "เพิ่มงานใหม่" : "แก้ไขงาน") + '</span><button class="ms-icon-btn" data-action="close">' + ICONS.x + "</button></div>" +
           '<div class="ms-modal-body">' +
-            '<label class="ms-field"><span class="ms-label">ชื่องาน *</span><input class="ms-input" type="text" data-field="name" value="' + esc(d.name) + '" placeholder="เช่น ประชุมทบทวนแผนการผลิต" /></label>' +
+            '<label class="ms-field"><span class="ms-label">ชื่องาน *</span><input class="ms-input" type="text" list="task-name-list" data-field="name" value="' + esc(d.name) + '" placeholder="เช่น ประชุมทบทวนแผนการผลิต" />' + nameDatalist + "</label>" +
             '<div class="ms-field"><span class="ms-label">กลุ่ม *</span><div class="ms-pillrow">' + groupPills + "</div></div>" +
+            projectField +
             '<label class="ms-field"><span class="ms-label">ลำดับความสำคัญ *</span><div class="ms-stepper">' +
               '<button type="button" class="ms-icon-btn" data-action="priority-minus">' + ICONS.minus + "</button>" +
               '<span class="ms-stepper-value">' + d.priority + "</span>" +
@@ -559,6 +626,7 @@
             "</div>" +
             '<div class="ms-field"><span class="ms-label">สถานะงาน *</span><div class="ms-pillrow">' + statusPills + "</div></div>" +
             progressField +
+            photoField +
             (state.modal.error ? '<div class="ms-form-error">' + esc(state.modal.error) + "</div>" : "") +
           "</div>" +
           '<div class="ms-modal-foot">' + footLeft +
@@ -605,6 +673,74 @@
     );
   }
 
+  function tasksInRange(from, to) {
+    return state.tasks
+      .filter(function (t) { var dk = t.start.slice(0, 10); return dk >= from && dk <= to; })
+      .sort(function (a, b) { return a.start.localeCompare(b.start); });
+  }
+
+  function groupByDate(list) {
+    var grouped = {};
+    list.forEach(function (t) { var dk = t.start.slice(0, 10); (grouped[dk] = grouped[dk] || []).push(t); });
+    return grouped;
+  }
+
+  function renderReportModal() {
+    var r = state.report;
+    var grouped = groupByDate(tasksInRange(r.from, r.to));
+    var dateKeys = Object.keys(grouped).sort();
+
+    var previewHTML = dateKeys.length === 0
+      ? '<div class="ms-empty">ไม่มีงานในช่วงวันที่ที่เลือก</div>'
+      : dateKeys.map(function (dk) {
+          var rows = grouped[dk].map(function (t) {
+            return '<div class="ms-report-row"><span class="ms-report-time">' + timeOf(t.start) + "–" + timeOf(t.end) + "</span><span class=\"ms-report-name\">" + esc(t.name) + '</span><span class="ms-report-tag" style="color:' + statusColor(t.status) + '">' + esc(t.status) + "</span></div>";
+          }).join("");
+          return '<div class="ms-report-day"><div class="ms-report-day-title">' + displayDate(dk) + "</div>" + rows + "</div>";
+        }).join("");
+
+    return (
+      '<div class="ms-modal-overlay" id="report-overlay">' +
+        '<div class="ms-modal">' +
+          '<div class="ms-modal-head"><span>ดาวน์โหลด PDF สรุปแผนงาน</span><button class="ms-icon-btn" data-action="report-close">' + ICONS.x + "</button></div>" +
+          '<div class="ms-modal-body">' +
+            '<div class="ms-field-row">' +
+              '<label class="ms-field"><span class="ms-label">จากวันที่</span><input class="ms-input" type="date" data-report="from" value="' + r.from + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">ถึงวันที่</span><input class="ms-input" type="date" data-report="to" value="' + r.to + '" /></label>' +
+            "</div>" +
+            '<div class="ms-report-preview">' + previewHTML + "</div>" +
+          "</div>" +
+          '<div class="ms-modal-foot"><span></span><div class="ms-modal-foot-right">' +
+            '<button class="ms-btn ms-btn-ghost" data-action="report-close">ปิด</button>' +
+            '<button class="ms-btn ms-btn-primary" data-action="report-download">' + ICONS.pdf + " ดาวน์โหลด PDF</button>" +
+          "</div></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function buildPrintArea() {
+    var r = state.report;
+    var grouped = groupByDate(tasksInRange(r.from, r.to));
+    var dateKeys = Object.keys(grouped).sort();
+    var body = dateKeys.length === 0
+      ? "<p>ไม่มีงานในช่วงวันที่ที่เลือก</p>"
+      : dateKeys.map(function (dk) {
+          var rows = grouped[dk].map(function (t) {
+            return "<tr><td>" + timeOf(t.start) + "–" + timeOf(t.end) + "</td><td>" + esc(t.name) + "</td><td>" + esc(t.group) + "</td><td>" + esc(t.status) + "</td></tr>";
+          }).join("");
+          return "<h3>" + displayDate(dk) + " (วัน" + WEEKDAY_FULL[weekdayLabel(dk)] + ")</h3>" +
+            "<table><thead><tr><th>เวลา</th><th>ชื่องาน</th><th>กลุ่ม</th><th>สถานะ</th></tr></thead><tbody>" + rows + "</tbody></table>";
+        }).join("");
+
+    var printArea = document.getElementById("print-area");
+    if (!printArea) return;
+    printArea.innerHTML =
+      "<h1>my_schedule — สรุปแผนงาน</h1>" +
+      '<p class="ms-print-meta">ช่วงวันที่ ' + displayDate(r.from) + " – " + displayDate(r.to) + " · พิมพ์เมื่อ " + new Date().toLocaleString("th-TH") + "</p>" +
+      body;
+  }
+
   /* ---------------- main render ---------------- */
   function render() {
     var app = document.getElementById("app");
@@ -632,6 +768,7 @@
         '<div class="ms-header">' +
           '<div class="ms-title-wrap"><span class="ms-title">my_schedule</span><span class="ms-subtitle">วางแผนงานรายวัน รายเดือน รายปี</span></div>' +
           '<div class="ms-header-actions">' +
+            '<button class="ms-icon-btn" data-action="open-report" title="ดาวน์โหลด PDF สรุปแผนงาน">' + ICONS.pdf + "</button>" +
             '<button class="' + syncBtnClass + '" data-action="open-settings" title="ซิงก์กับ Google Sheets">' + syncIcon + "</button>" +
             '<button class="ms-add-btn" data-action="add-task">' + ICONS.plus + " เพิ่มงาน</button>" +
           "</div>" +
@@ -642,6 +779,7 @@
 
     renderModal();
     document.getElementById("modal-root-2").innerHTML = state.settingsOpen ? renderSettingsModal() : "";
+    document.getElementById("modal-root-3").innerHTML = state.report ? renderReportModal() : "";
   }
 
   /* ---------------- actions ---------------- */
@@ -681,6 +819,7 @@
   function findTask(id) { for (var i = 0; i < state.tasks.length; i++) if (state.tasks[i].id === id) return state.tasks[i]; return null; }
 
   document.addEventListener("click", function (e) {
+    if (e.target.id === "report-overlay") { state.report = null; render(); return; }
     if (e.target.id === "settings-overlay") { state.settingsOpen = false; render(); return; }
     if (e.target.classList && e.target.classList.contains("ms-modal-overlay")) { closeModal(); return; }
 
@@ -689,6 +828,10 @@
     var action = el.getAttribute("data-action");
 
     switch (action) {
+      case "open-report": state.report = { from: state.dateKey, to: state.dateKey }; render(); break;
+      case "report-close": state.report = null; render(); break;
+      case "report-download": buildPrintArea(); setTimeout(function () { window.print(); }, 60); break;
+
       case "open-settings": state.settingsOpen = true; render(); break;
       case "settings-close": state.settingsOpen = false; render(); break;
       case "sheets-connect":
@@ -739,13 +882,18 @@
       case "close":
         closeModal(); break;
 
-      case "set-group": state.modal.draft.group = el.getAttribute("data-value"); render(); break;
-      case "set-status": state.modal.draft.status = el.getAttribute("data-value"); if (state.modal.draft.status === "ทำเสร็จแล้ว") state.modal.draft.progress = 100; render(); break;
+      case "set-group": state.modal.draft.group = el.getAttribute("data-value"); if (state.modal.draft.group === "Project") state.modal.draft.project = ""; render(); break;
+      case "set-status": state.modal.draft.status = el.getAttribute("data-value"); render(); break;
       case "priority-minus": state.modal.draft.priority = Math.max(1, state.modal.draft.priority - 1); render(); break;
       case "priority-plus": state.modal.draft.priority = Math.min(5, state.modal.draft.priority + 1); render(); break;
       case "delete-ask": state.modal.confirmDel = true; render(); break;
       case "delete-cancel": state.modal.confirmDel = false; render(); break;
       case "delete-confirm": deleteModal(); break;
+      case "remove-photo": {
+        var idx = Number(el.getAttribute("data-index"));
+        state.modal.draft.photos.splice(idx, 1);
+        render(); break;
+      }
       case "save": saveModal(); break;
     }
   });
@@ -758,15 +906,44 @@
       saveConfig();
       return;
     }
+    var reportField = el.getAttribute("data-report");
+    if (reportField && state.report) {
+      state.report[reportField] = el.value;
+      render();
+      return;
+    }
     if (!state.modal) return;
     var field = el.getAttribute("data-field");
+    if (field === "start") {
+      state.modal.draft.start = el.value;
+      var newEnd = addHoursToDT(el.value, 2);
+      state.modal.draft.end = newEnd;
+      var endInput = document.querySelector('[data-field="end"]');
+      if (endInput) endInput.value = newEnd;
+      if (state.modal.error) state.modal.error = "";
+      return;
+    }
     if (field) { state.modal.draft[field] = el.value; if (state.modal.error) { state.modal.error = ""; } return; }
-    var action = el.getAttribute("data-action");
-    if (action === "set-progress") {
-      state.modal.draft.progress = Number(el.value);
-      var lbl = document.getElementById("progress-label");
-      if (lbl) lbl.textContent = "ความคืบหน้า — " + state.modal.draft.progress + "%";
-    } else if (action === "day-pick") { state.dateKey = el.value; render(); }
+    if (el.getAttribute("data-action") === "day-pick") { state.dateKey = el.value; render(); }
+  });
+
+  document.addEventListener("change", function (e) {
+    var el = e.target;
+    if (el.getAttribute("data-action") !== "pick-photo") return;
+    var files = el.files ? Array.prototype.slice.call(el.files) : [];
+    if (!files.length || !state.modal) return;
+    var draft = state.modal.draft;
+    var room = Math.max(0, 6 - (draft.photos ? draft.photos.length : 0));
+    files.slice(0, room).forEach(function (file) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        draft.photos = draft.photos || [];
+        draft.photos.push(String(reader.result));
+        render();
+      };
+      reader.readAsDataURL(file);
+    });
+    el.value = "";
   });
 
   /* ---------------- init ---------------- */
