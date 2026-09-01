@@ -1,4 +1,4 @@
-var CACHE_NAME = "my-schedule-v1";
+var CACHE_NAME = "my-schedule-v3";
 var APP_SHELL = [
   "./",
   "./index.html",
