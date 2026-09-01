@@ -82,6 +82,31 @@ button, input{ font-family:inherit; }
 .ms-stepper-value{ font-family:'Kanit',sans-serif; font-weight:700; font-size:16px; min-width:18px; text-align:center; }
 .ms-range{ width:100%; }
 .ms-form-error{ color:#E5484D; font-size:12px; font-weight:600; background:#FDEDEE; padding:8px 10px; border-radius:8px; }
+.ms-progress-note{ font-size:11px; color:var(--ink-soft); margin-top:6px; }
+.ms-photo-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+.ms-photo-thumb{ position:relative; width:76px; height:76px; border-radius:10px; overflow:hidden; border:1px solid var(--border); flex-shrink:0; }
+.ms-photo-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+.ms-photo-thumb-remove{ position:absolute; top:3px; right:3px; width:22px; height:22px; background:rgba(27,32,54,.65); border:none; color:#fff; }
+.ms-photo-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:76px; height:76px; border:1.5px dashed var(--border); border-radius:10px; color:var(--ink-soft); cursor:pointer; font-size:10px; flex-shrink:0; }
+.ms-report-preview{ display:flex; flex-direction:column; gap:12px; max-height:280px; overflow-y:auto; }
+.ms-report-day{ display:flex; flex-direction:column; gap:6px; }
+.ms-report-day-title{ font-family:'Kanit',sans-serif; font-weight:700; font-size:13px; }
+.ms-report-row{ display:flex; align-items:center; gap:8px; font-size:12px; background:var(--surface-soft); border-radius:8px; padding:7px 9px; }
+.ms-report-time{ font-weight:700; color:var(--ink-soft); min-width:92px; }
+.ms-report-name{ flex:1; }
+.ms-report-tag{ font-weight:700; font-size:11px; }
+.ms-print-only{ display:none; }
+@media print{
+  body{ background:#fff; }
+  body *{ visibility:hidden; }
+  #print-area, #print-area *{ visibility:visible; }
+  #print-area{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:24px; font-family:'Noto Sans Thai',sans-serif; color:#111; }
+  #print-area h1{ font-family:'Kanit',sans-serif; font-size:20px; margin:0 0 4px; }
+  #print-area .ms-print-meta{ font-size:12px; color:#555; margin:0 0 18px; }
+  #print-area h3{ font-family:'Kanit',sans-serif; font-size:14px; margin:16px 0 6px; border-bottom:1px solid #ccc; padding-bottom:4px; }
+  #print-area table{ width:100%; border-collapse:collapse; font-size:12px; margin-bottom:6px; }
+  #print-area th, #print-area td{ border:1px solid #ccc; padding:5px 7px; text-align:left; }
+}
 .ms-modal-foot{ border-top:1px solid var(--border); padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .ms-modal-foot-right{ display:flex; gap:8px; margin-left:auto; }
 .ms-confirm-del{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-soft); }
