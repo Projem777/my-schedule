@@ -192,6 +192,11 @@
     opts.headers = headers;
     return fetch("https://sheets.googleapis.com/v4/spreadsheets/" + state.sync.spreadsheetId + path, opts).then(function (res) {
       if (!res.ok) {
+        if (res.status === 401) {
+          clearToken();
+          state.sync.accessToken = "";
+          state.sync.signedIn = false;
+        }
         return res.json().catch(function () { return {}; }).then(function (e) {
           throw new Error((e.error && e.error.message) || res.statusText || "Sheets API error");
         });
@@ -199,6 +204,7 @@
       return res.status === 204 ? {} : res.json();
     });
   }
+
 
   function ensureTokenClient(callback) {
     if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
@@ -215,6 +221,7 @@
             state.sync.accessToken = resp.access_token;
             state.sync.signedIn = true;
             state.sync.lastError = "";
+            saveToken(resp.access_token, resp.expires_in);
             pullFromSheet();
           } else {
             state.sync.lastError = "เข้าสู่ระบบไม่สำเร็จ";
@@ -231,6 +238,26 @@
     return tokenClient;
   }
 
+  var TOKEN_KEY = "my_schedule_token_v1";
+
+  function saveToken(token, expiresInSec) {
+    try {
+      localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: token, expiresAt: Date.now() + (Number(expiresInSec) || 3300) * 1000 }));
+    } catch (e) {}
+  }
+  function loadToken() {
+    try {
+      var raw = localStorage.getItem(TOKEN_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (data && data.token && data.expiresAt > Date.now() + 30000) return data;
+    } catch (e) {}
+    return null;
+  }
+  function clearToken() {
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  }
+
   function signIn(interactive) {
     if (!hasSyncConfig()) { state.settingsOpen = true; render(); return; }
     var tc = ensureTokenClient();
@@ -244,6 +271,7 @@
     }
     state.sync.accessToken = "";
     state.sync.signedIn = false;
+    clearToken();
     render();
   }
 
@@ -951,8 +979,15 @@
   loadTasks();
   render();
   if (hasSyncConfig()) {
-    window.addEventListener("load", function () {
-      setTimeout(function () { signIn(false); }, 300);
-    });
+    var savedToken = loadToken();
+    if (savedToken) {
+      state.sync.accessToken = savedToken.token;
+      state.sync.signedIn = true;
+      pullFromSheet();
+    } else {
+      window.addEventListener("load", function () {
+        setTimeout(function () { signIn(false); }, 300);
+      });
+    }
   }
 })();
