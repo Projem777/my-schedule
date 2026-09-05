@@ -5,9 +5,10 @@
   "use strict";
 
   var STORAGE_KEY = "my_schedule_tasks_v1";
+  var FIVES_STORAGE_KEY = "my_schedule_5s_v1";
   var CONFIG_KEY = "my_schedule_sync_config_v1";
   var SHEET_TAB = "Sheet1";
-  var SHEET_HEADERS = ["ID_แผนงาน", "ชื่องาน", "กลุ่ม", "ลำดับสำคัญ", "สถานะงาน", "ความคืบหน้า", "เริ่มตามแผน", "สิ้นสุดตามแผน", "โครงการอ้างอิง"];
+  var SHEET_HEADERS = ["ID_แผนงาน", "ชื่องาน", "กลุ่ม", "ลำดับสำคัญ", "สถานะงาน", "ความคืบหน้า", "เริ่มตามแผน", "สิ้นสุดตามแผน", "โครงการอ้างอิง", "รูปภาพ"];
 
   var GROUPS = [
     { key: "งานประจำ", color: "#F5A623" },
@@ -38,6 +39,8 @@
     day: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/><circle cx="12" cy="15" r="2.4" fill="currentColor" stroke="none"/></svg>',
     month: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>',
     year: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="8" height="8" rx="1.5"/><rect x="13" y="4" width="8" height="8" rx="1.5"/><rect x="3" y="14" width="8" height="8" rx="1.5"/><rect x="13" y="14" width="8" height="8" rx="1.5"/></svg>',
+    week: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M13 4v16M18 4v16"/></svg>',
+    checklist: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 13 2 2 4-4"/></svg>',
     cloud: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-1-8.89A6 6 0 0 1 17.5 8.5 4 4 0 0 1 17.5 19z"/></svg>',
     cloudOff: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-1-8.89A6 6 0 0 1 17.5 8.5 4 4 0 0 1 17.5 19z"/><path d="M3 3l18 18"/></svg>',
     sync: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.3M3 12a9 9 0 0 1 15.5-6.3M3 3v6h6M21 21v-6h-6"/></svg>',
@@ -61,6 +64,21 @@
     if (isNaN(d.getTime())) return dtStr;
     d.setHours(d.getHours() + hours);
     return dateKeyOf(d) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function mondayOf(dateKey) {
+    var p = dateKey.split("-").map(Number);
+    var d = new Date(p[0], p[1] - 1, p[2]);
+    var day = d.getDay();
+    var diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return dateKeyOf(d);
+  }
+  var WEEK_START_HOUR = 6, WEEK_END_HOUR = 22;
+  function timeFraction(dtStr) {
+    var hh = Number(dtStr.slice(11, 13)), mm = Number(dtStr.slice(14, 16));
+    var total = hh + mm / 60;
+    var clamped = Math.max(WEEK_START_HOUR, Math.min(WEEK_END_HOUR, total));
+    return (clamped - WEEK_START_HOUR) / (WEEK_END_HOUR - WEEK_START_HOUR);
   }
   function displayDate(dateKey) { var p = dateKey.split("-"); return p[2] + "/" + p[1] + "/" + p[0]; }
   function weekdayLabel(dateKey) { var p = dateKey.split("-").map(Number); return WEEKDAYS[new Date(p[0], p[1] - 1, p[2]).getDay()]; }
@@ -105,6 +123,10 @@
     modal: null, // { isNew, draft, confirmDel, error }
     settingsOpen: false,
     report: null, // { from, to } when the PDF export modal is open
+    groupFilter: {}, // { [groupName]: "all" | "done" | "notdone" }
+    weekCursor: null, // Monday date-key for the week view; set during init
+    fiveS: [],
+    fivesModal: null, // { isNew, draft, confirmDel, error }
     sync: {
       clientId: "",
       spreadsheetId: "",
@@ -158,6 +180,49 @@
     if (state.sync.signedIn) pushToSheet();
   }
 
+  function loadFiveS() {
+    try {
+      var raw = localStorage.getItem(FIVES_STORAGE_KEY);
+      if (raw) { state.fiveS = JSON.parse(raw); return; }
+    } catch (e) {}
+    state.fiveS = [];
+  }
+  function saveFiveS() {
+    try { localStorage.setItem(FIVES_STORAGE_KEY, JSON.stringify(state.fiveS)); } catch (e) {}
+  }
+  function emptyFiveSDraft() {
+    return {
+      id: null,
+      itemName: "",
+      problemDesc: "",
+      runNo: "",
+      foundDate: todayKey(),
+      foundTime: pad(new Date().getHours()) + ":" + pad(new Date().getMinutes()),
+      location: "",
+      department: "",
+      division: "",
+      responsible: "",
+      beforePhoto: "",
+      afterPhoto: "",
+      actions: [{ detail: "", dueDate: "", percent: 0 }],
+      percentVsTotal: 0,
+      dueDate: "",
+      successPercent: 0,
+      followUps: [
+        { label: "ตรวจสอบพื้นที่ย้อนหลังแก้ไข 1 เดือน", date: "", photo: "" },
+        { label: "ตรวจสอบพื้นที่ย้อนหลังแก้ไข 2 เดือน", date: "", photo: "" },
+        { label: "ตรวจสอบพื้นที่ย้อนหลังแก้ไข 3 เดือน", date: "", photo: "" },
+      ],
+    };
+  }
+  function daysRemaining(dueDateKey) {
+    if (!dueDateKey) return null;
+    var p = dueDateKey.split("-").map(Number);
+    var due = new Date(p[0], p[1] - 1, p[2]);
+    var t = new Date(); t.setHours(0, 0, 0, 0);
+    return Math.round((due - t) / 86400000);
+  }
+
   /* ---------------- Google Sheets sync ---------------- */
   var tokenClient = null;
 
@@ -171,7 +236,8 @@
     return Math.round(((n - s) / (e - s)) * 100);
   }
 
-  function taskToRow(t) { return [t.id, t.name, t.group, t.priority, t.status, computeProgress(t), t.start, t.end, t.project || ""]; }
+  function onlyDriveRefs(list) { return (list || []).filter(function (p) { return p && p.indexOf("drive:") === 0; }); }
+  function taskToRow(t) { return [t.id, t.name, t.group, t.priority, t.status, computeProgress(t), t.start, t.end, t.project || "", onlyDriveRefs(t.photos).join("|")]; }
   function rowToTask(r) {
     return {
       id: r[0] || uid(),
@@ -182,7 +248,56 @@
       start: r[6] || localDT(todayKey(), 9),
       end: r[7] || localDT(todayKey(), 10),
       project: r[8] || "",
+      photos: (r[9] || "").split("|").filter(Boolean),
     };
+  }
+
+  var PLACEHOLDER_IMG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='%23E3E6F0'/></svg>";
+  var driveImageCache = {};
+  var drivePending = {};
+
+  function uploadPhotoToDrive(dataUrl, filename) {
+    return fetch(dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+      var metadata = { name: filename, mimeType: blob.type || "image/jpeg" };
+      var form = new FormData();
+      form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+      form.append("file", blob);
+      return fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + state.sync.accessToken },
+        body: form,
+      }).then(function (r) {
+        if (!r.ok) throw new Error("Drive upload failed");
+        return r.json();
+      }).then(function (json) { return json.id; });
+    });
+  }
+
+  function resolveDrivePhoto(fileId) {
+    if (driveImageCache[fileId]) return driveImageCache[fileId];
+    if (!drivePending[fileId] && state.sync.accessToken) {
+      drivePending[fileId] = true;
+      fetch("https://www.googleapis.com/drive/v3/files/" + fileId + "?alt=media", {
+        headers: { Authorization: "Bearer " + state.sync.accessToken },
+      }).then(function (r) {
+        if (!r.ok) throw new Error("Drive fetch failed");
+        return r.blob();
+      }).then(function (blob) {
+        driveImageCache[fileId] = URL.createObjectURL(blob);
+        delete drivePending[fileId];
+        render();
+      }).catch(function () { delete drivePending[fileId]; });
+    }
+    return null;
+  }
+
+  function photoSrc(value) {
+    if (!value) return "";
+    if (value.indexOf("drive:") === 0) {
+      var url = resolveDrivePhoto(value.slice(6));
+      return url || PLACEHOLDER_IMG;
+    }
+    return value;
   }
 
   function sheetsFetch(path, opts) {
@@ -215,7 +330,7 @@
     if (!tokenClient || tokenClient._clientId !== state.sync.clientId) {
       tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: state.sync.clientId,
-        scope: "https://www.googleapis.com/auth/spreadsheets",
+        scope: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
         callback: function (resp) {
           if (resp && resp.access_token) {
             state.sync.accessToken = resp.access_token;
@@ -223,6 +338,7 @@
             state.sync.lastError = "";
             saveToken(resp.access_token, resp.expires_in);
             pullFromSheet();
+            pullFiveSFromSheet();
           } else {
             state.sync.lastError = "เข้าสู่ระบบไม่สำเร็จ";
             render();
@@ -277,7 +393,7 @@
 
   function pullFromSheet() {
     state.sync.syncing = true; render();
-    sheetsFetch("/values/" + encodeURIComponent(SHEET_TAB + "!A:I"))
+    sheetsFetch("/values/" + encodeURIComponent(SHEET_TAB + "!A:J"))
       .then(function (data) {
         var rows = (data.values || []).slice();
         if (rows.length && rows[0][0] === SHEET_HEADERS[0]) rows = rows.slice(1);
@@ -322,6 +438,71 @@
         state.sync.lastError = String((err && err.message) || err);
         render();
       });
+  }
+
+  var FIVES_SHEET_TAB = "FiveS";
+  var FIVES_SHEET_HEADERS = ["ID", "รายการ/สภาพปัญหา", "สภาพปัญหา", "RunNo", "วันที่พบ", "เวลาที่พบ", "สถานที่พบ", "หน่วยงาน", "ฝ่าย", "ผู้รับผิดชอบ", "รูปก่อน", "รูปหลัง", "แนวทางแก้ไข(JSON)", "%เทียบพื้นที่", "กำหนดเสร็จ", "%สำเร็จ", "ติดตามผล(JSON)"];
+
+  function fiveSToRow(r) {
+    return [
+      r.id, r.itemName, r.problemDesc, r.runNo, r.foundDate, r.foundTime, r.location, r.department, r.division, r.responsible,
+      onlyDriveRefs([r.beforePhoto])[0] || "", onlyDriveRefs([r.afterPhoto])[0] || "",
+      JSON.stringify(r.actions || []),
+      r.percentVsTotal, r.dueDate, r.successPercent,
+      JSON.stringify((r.followUps || []).map(function (f) { return { label: f.label, date: f.date, photo: onlyDriveRefs([f.photo])[0] || "" }; })),
+    ];
+  }
+  function rowToFiveS(row) {
+    var actions = []; try { actions = JSON.parse(row[12] || "[]"); } catch (e) {}
+    var fus = []; try { fus = JSON.parse(row[16] || "[]"); } catch (e) {}
+    while (fus.length < 3) fus.push({ label: "ตรวจสอบพื้นที่ย้อนหลังแก้ไข " + (fus.length + 1) + " เดือน", date: "", photo: "" });
+    return {
+      id: row[0] || uid(), itemName: row[1] || "", problemDesc: row[2] || "", runNo: row[3] || "",
+      foundDate: row[4] || todayKey(), foundTime: row[5] || "", location: row[6] || "", department: row[7] || "",
+      division: row[8] || "", responsible: row[9] || "", beforePhoto: row[10] || "", afterPhoto: row[11] || "",
+      actions: actions.length ? actions : [{ detail: "", dueDate: "", percent: 0 }],
+      percentVsTotal: Number(row[13]) || 0, dueDate: row[14] || "", successPercent: Number(row[15]) || 0,
+      followUps: fus,
+    };
+  }
+
+  function ensureFiveSTab() {
+    return sheetsFetch("?fields=sheets.properties.title").then(function (meta) {
+      var exists = (meta.sheets || []).some(function (s) { return s.properties && s.properties.title === FIVES_SHEET_TAB; });
+      if (exists) return;
+      return sheetsFetch(":batchUpdate", { method: "POST", body: JSON.stringify({ requests: [{ addSheet: { properties: { title: FIVES_SHEET_TAB } } }] }) });
+    });
+  }
+
+  function pullFiveSFromSheet() {
+    return sheetsFetch("/values/" + encodeURIComponent(FIVES_SHEET_TAB + "!A:Q"))
+      .then(function (data) {
+        var rows = (data.values || []).slice();
+        if (rows.length && rows[0][0] === "ID") rows = rows.slice(1);
+        rows = rows.filter(function (r) { return r && r[0]; });
+        if (rows.length > 0) { state.fiveS = rows.map(rowToFiveS); saveFiveS(); render(); }
+        else if (state.fiveS.length > 0) { return pushFiveSToSheet(); }
+      })
+      .catch(function () { /* FiveS tab probably doesn't exist yet on this sheet */ });
+  }
+
+  function pushFiveSToSheet() {
+    if (!state.sync.signedIn) return;
+    return ensureFiveSTab().then(function () {
+      var values = [FIVES_SHEET_HEADERS].concat(state.fiveS.map(fiveSToRow));
+      return sheetsFetch("/values/" + encodeURIComponent(FIVES_SHEET_TAB) + ":clear", { method: "POST", body: "{}" })
+        .then(function () {
+          return sheetsFetch("/values/" + encodeURIComponent(FIVES_SHEET_TAB + "!A1") + "?valueInputOption=RAW", {
+            method: "PUT",
+            body: JSON.stringify({ range: FIVES_SHEET_TAB + "!A1", majorDimension: "ROWS", values: values }),
+          });
+        });
+    }).catch(function () { /* best-effort; local copy is already saved */ });
+  }
+
+  function persistFiveS() {
+    saveFiveS();
+    if (state.sync.signedIn) pushFiveSToSheet();
   }
 
   function tasksByDate() {
@@ -397,6 +578,24 @@
     );
   }
 
+  function panelWithFilterHTML(title, count, colorDot, bodyHTML, filter) {
+    return (
+      '<div class="ms-panel">' +
+        '<div class="ms-panel-head">' +
+          '<span class="ms-panel-dot" style="background:' + (colorDot || "var(--primary)") + '"></span>' +
+          '<span class="ms-panel-title">' + esc(title) + "</span>" +
+          '<select class="ms-panel-filter" data-action="group-filter" data-group="' + esc(title) + '">' +
+            '<option value="all"' + (filter === "all" ? " selected" : "") + ">ทั้งหมด</option>" +
+            '<option value="notdone"' + (filter === "notdone" ? " selected" : "") + ">ยังไม่เสร็จ</option>" +
+            '<option value="done"' + (filter === "done" ? " selected" : "") + ">เสร็จแล้ว</option>" +
+          "</select>" +
+          '<span class="ms-panel-count">' + count + "</span>" +
+        "</div>" +
+        '<div class="ms-panel-list">' + bodyHTML + "</div>" +
+      "</div>"
+    );
+  }
+
   function donutHTML(title, data) {
     var total = data.reduce(function (s, d) { return s + d.value; }, 0);
     var body;
@@ -426,9 +625,10 @@
   function renderHome() {
     var t = todayKey(), tmr = addDays(t, 1), nowD = new Date();
     var byStart = function (a, b) { return a.start.localeCompare(b.start); };
-    var todayTasks = state.tasks.filter(function (x) { return x.start.slice(0, 10) === t; }).sort(byStart);
-    var tomorrowTasks = state.tasks.filter(function (x) { return x.start.slice(0, 10) === tmr; }).sort(byStart);
-    var overdue = state.tasks.filter(function (x) { return x.status === "กำลังดำเนินการ" && new Date(x.end) < nowD; }).sort(byStart);
+    var notProject = function (x) { return x.group !== "Project"; };
+    var todayTasks = state.tasks.filter(function (x) { return x.start.slice(0, 10) === t; }).filter(notProject).sort(byStart);
+    var tomorrowTasks = state.tasks.filter(function (x) { return x.start.slice(0, 10) === tmr; }).filter(notProject).sort(byStart);
+    var overdue = state.tasks.filter(function (x) { return x.status === "กำลังดำเนินการ" && new Date(x.end) < nowD; }).filter(notProject).sort(byStart);
 
     var html = '<div class="ms-grid">';
     html += panelHTML("งานวันนี้", todayTasks.length, null, statusGroupedListHTML(todayTasks));
@@ -436,9 +636,13 @@
     html += panelHTML("งานค้าง", overdue.length, "#E5484D", overdue.length === 0 ? '<div class="ms-empty">ไม่มีงานค้าง</div>' : overdue.map(function (tk) { return taskRowHTML(tk, true); }).join(""));
 
     GROUPS.forEach(function (g) {
-      var list = state.tasks.filter(function (x) { return x.group === g.key; }).sort(byStart);
-      var body = list.length === 0 ? '<div class="ms-empty">ยังไม่มีงานในหมวดนี้</div>' : list.map(function (tk) { return taskRowHTML(tk, true); }).join("");
-      html += panelHTML(g.key, list.length, g.color, body);
+      var filter = state.groupFilter[g.key] || "all";
+      var list = state.tasks.filter(function (x) { return x.group === g.key; });
+      if (filter === "done") list = list.filter(function (x) { return x.status === "ทำเสร็จแล้ว"; });
+      else if (filter === "notdone") list = list.filter(function (x) { return x.status !== "ทำเสร็จแล้ว"; });
+      list = list.sort(byStart);
+      var body = list.length === 0 ? '<div class="ms-empty">ไม่มีงานตามเงื่อนไขนี้</div>' : list.map(function (tk) { return taskRowHTML(tk, true); }).join("");
+      html += panelWithFilterHTML(g.key, list.length, g.color, body, filter);
     });
 
     var groupData = GROUPS.map(function (g) { return { name: g.key, color: g.color, value: state.tasks.filter(function (x) { return x.group === g.key && x.status !== "ยกเลิก"; }).length }; }).filter(function (d) { return d.value > 0; });
@@ -489,6 +693,58 @@
       });
     }
     html += "</div></div>";
+    return html;
+  }
+
+  function renderWeek() {
+    var weekStart = state.weekCursor || mondayOf(todayKey());
+    var days = [];
+    for (var i = 0; i < 7; i++) days.push(addDays(weekStart, i));
+    var tbd = tasksByDate();
+    var t = todayKey();
+    var hourRows = [];
+    for (var h = WEEK_START_HOUR; h <= WEEK_END_HOUR; h++) hourRows.push(h);
+
+    var html =
+      '<div class="ms-week">' +
+        '<div class="ms-month-nav">' +
+          '<button class="ms-icon-btn" data-action="week-prev">' + ICONS.chevronLeft + "</button>" +
+          '<div class="ms-month-title">' + displayDate(days[0]) + " – " + displayDate(days[6]) + "</div>" +
+          '<button class="ms-icon-btn" data-action="week-next">' + ICONS.chevronRight + "</button>" +
+          '<button class="ms-btn ms-btn-ghost" data-action="week-today">สัปดาห์นี้</button>' +
+        "</div>" +
+        '<div class="ms-week-grid-wrap"><div class="ms-week-grid">' +
+          '<div class="ms-week-col ms-week-col-time"><div class="ms-week-col-head">&nbsp;</div>' +
+            hourRows.map(function (h) { return '<div class="ms-week-hour-label">' + pad(h) + ":00</div>"; }).join("") +
+          "</div>";
+
+    days.forEach(function (dk) {
+      var list = (tbd[dk] || []).filter(function (x) { return x.group !== "Project"; }).sort(function (a, b) { return a.start.localeCompare(b.start); });
+      var blocksHTML = list.map(function (tk) {
+        var top = timeFraction(tk.start) * 100;
+        var bottom = timeFraction(tk.end) * 100;
+        var height = Math.max(bottom - top, 2.2);
+        var gColor = groupColor(tk.group);
+        return (
+          '<button class="ms-week-block" data-action="open-task" data-id="' + tk.id + '" style="top:' + top.toFixed(2) + "%;height:" + height.toFixed(2) + "%;border-left-color:" + gColor + ";background:" + gColor + '1c">' +
+            '<span class="ms-week-block-time">' + timeOf(tk.start) + "</span>" +
+            '<span class="ms-week-block-name">' + esc(tk.name) + "</span>" +
+          "</button>"
+        );
+      }).join("");
+      var p = dk.split("-").map(Number);
+      var wd = WEEKDAYS[new Date(p[0], p[1] - 1, p[2]).getDay()];
+      html +=
+        '<div class="ms-week-col' + (dk === t ? " today" : "") + '">' +
+          '<div class="ms-week-col-head">' + wd + " " + p[2] + "</div>" +
+          '<div class="ms-week-col-body">' +
+            hourRows.map(function () { return '<div class="ms-week-hour-row"></div>'; }).join("") +
+            blocksHTML +
+          "</div>" +
+        "</div>";
+    });
+
+    html += "</div></div></div>";
     return html;
   }
 
@@ -566,10 +822,188 @@
     return html;
   }
 
+  function fiveSMiniDonut(percent, size) {
+    size = size || 40;
+    var color = percent >= 100 ? "#2AA876" : percent >= 50 ? "#F5A623" : "#E5484D";
+    return (
+      '<div class="ms-5s-donut" style="width:' + size + "px;height:" + size + "px;background:conic-gradient(" + color + " " + (percent * 3.6).toFixed(1) + "deg, #E9EAF0 0)\">" +
+        '<div class="ms-5s-donut-inner"><span>' + Math.round(percent) + "%</span></div>" +
+      "</div>"
+    );
+  }
+
+  function renderFiveS() {
+    var list = state.fiveS.slice().sort(function (a, b) { return (b.foundDate || "").localeCompare(a.foundDate || ""); });
+    var html = '<div class="ms-5s">' +
+      '<div class="ms-5s-toolbar"><button class="ms-btn ms-btn-primary" data-action="5s-add">' + ICONS.plus + " เพิ่มรายการ 5ส</button></div>";
+
+    if (list.length === 0) {
+      html += '<div class="ms-empty-lg">ยังไม่มีรายการตรวจ 5ส — กด “เพิ่มรายการ 5ส” เพื่อเริ่มบันทึก</div>';
+    } else {
+      html += '<div class="ms-5s-grid">';
+      list.forEach(function (r) {
+        var dr = daysRemaining(r.dueDate);
+        html +=
+          '<button class="ms-5s-card" data-action="5s-open" data-id="' + r.id + '">' +
+            '<div class="ms-5s-card-photos">' +
+              (r.beforePhoto ? '<img src="' + photoSrc(r.beforePhoto) + '" alt="ก่อนทำ" />' : '<div class="ms-5s-photo-placeholder">ก่อนทำ</div>') +
+              (r.afterPhoto ? '<img src="' + photoSrc(r.afterPhoto) + '" alt="หลังทำ" />' : '<div class="ms-5s-photo-placeholder">หลังทำ</div>') +
+            "</div>" +
+            '<div class="ms-5s-card-body">' +
+              '<div class="ms-5s-card-title">' + esc(r.itemName || "(ไม่มีชื่อรายการ)") + "</div>" +
+              '<div class="ms-5s-card-meta">' + esc(r.location || "-") + " · " + (r.foundDate ? displayDate(r.foundDate) : "-") + "</div>" +
+              (dr !== null ? '<div class="ms-5s-card-due' + (dr < 0 ? " overdue" : "") + '">' + (dr < 0 ? "เลยกำหนด " + Math.abs(dr) + " วัน" : "เหลือ " + dr + " วัน") + "</div>" : "") +
+            "</div>" +
+            fiveSMiniDonut(r.successPercent || 0, 46) +
+          "</button>";
+      });
+      html += "</div>";
+    }
+    html += "</div>";
+    return html;
+  }
+
   /* ---------------- modal ---------------- */
   function emptyDraft(prefillDate) {
     var dk = prefillDate || todayKey();
     return { id: null, name: "", group: GROUPS[0].key, priority: 1, status: "กำลังดำเนินการ", start: localDT(dk, 8), end: localDT(dk, 10), project: "", photos: [] };
+  }
+
+  function fiveSPhotoSlot(fieldName, label, photoUrl) {
+    return (
+      '<div class="ms-5s-photoslot">' +
+        '<span class="ms-label">' + esc(label) + "</span>" +
+        (photoUrl
+          ? '<div class="ms-photo-thumb ms-5s-photo-thumb"><img src="' + photoSrc(photoUrl) + '" alt="" /><button type="button" class="ms-icon-btn ms-photo-thumb-remove" data-action="5s-remove-photo" data-field="' + fieldName + '">' + ICONS.x + "</button></div>"
+          : '<label class="ms-photo-add">' + ICONS.camera + "<span>ถ่ายรูป</span>" +
+            '<input type="file" accept="image/*" data-action="5s-pick-photo" data-field="' + fieldName + '" style="display:none" /></label>'
+        ) +
+      "</div>"
+    );
+  }
+
+  function renderFiveSModal() {
+    var m = state.fivesModal;
+    var d = m.draft, isNew = m.isNew;
+    var dr = daysRemaining(d.dueDate);
+
+    var actionsRows = d.actions.map(function (a, i) {
+      return (
+        '<div class="ms-5s-action-row">' +
+          '<input class="ms-input" type="text" placeholder="รายละเอียดแนวทางแก้ไข" data-5s-action="detail" data-index="' + i + '" value="' + esc(a.detail) + '" />' +
+          '<input class="ms-input ms-5s-action-date" type="date" data-5s-action="dueDate" data-index="' + i + '" value="' + (a.dueDate || "") + '" />' +
+          '<input class="ms-input ms-5s-action-pct" type="number" min="0" max="100" data-5s-action="percent" data-index="' + i + '" value="' + a.percent + '" />' +
+          (d.actions.length > 1 ? '<button type="button" class="ms-icon-btn" data-action="5s-remove-action" data-index="' + i + '">' + ICONS.x + "</button>" : "") +
+        "</div>"
+      );
+    }).join("");
+
+    var followUpsHTML = d.followUps.map(function (f, i) {
+      return (
+        '<div class="ms-5s-followup">' +
+          '<input class="ms-input ms-5s-followup-label" type="text" data-5s-followup="label" data-index="' + i + '" value="' + esc(f.label) + '" />' +
+          '<input class="ms-input" type="date" data-5s-followup="date" data-index="' + i + '" value="' + (f.date || "") + '" />' +
+          fiveSPhotoSlot("followUps." + i, "รูปติดตามผล", f.photo) +
+        "</div>"
+      );
+    }).join("");
+
+    var footLeft;
+    if (isNew) {
+      footLeft = "";
+    } else if (m.confirmDel) {
+      footLeft = '<div class="ms-confirm-del"><span>ยืนยันการลบ?</span><button class="ms-btn ms-btn-danger" data-action="5s-delete-confirm">ลบ</button><button class="ms-btn ms-btn-ghost" data-action="5s-delete-cancel">ยกเลิก</button></div>';
+    } else {
+      footLeft = '<button class="ms-btn ms-btn-danger-ghost" data-action="5s-delete-ask">' + ICONS.trash + " ลบรายการ</button>";
+    }
+
+    return (
+      '<div class="ms-modal-overlay" id="5s-overlay">' +
+        '<div class="ms-modal ms-modal-wide">' +
+          '<div class="ms-modal-head"><span>' + (isNew ? "เพิ่มรายการตรวจ 5ส" : "แก้ไขรายการ 5ส") + '</span><button class="ms-icon-btn" data-action="5s-close">' + ICONS.x + "</button></div>" +
+          '<div class="ms-modal-body">' +
+            '<label class="ms-field"><span class="ms-label">1. รายการ/สภาพปัญหา *</span><input class="ms-input" type="text" data-5s-field="itemName" value="' + esc(d.itemName) + '" placeholder="เช่น มีวัชพืชขึ้นบนหลังคา" /></label>' +
+            '<label class="ms-field"><span class="ms-label">สภาพปัญหา</span><input class="ms-input" type="text" data-5s-field="problemDesc" value="' + esc(d.problemDesc) + '" /></label>' +
+            '<div class="ms-field-row">' +
+              '<label class="ms-field"><span class="ms-label">Run No.</span><input class="ms-input" type="text" data-5s-field="runNo" value="' + esc(d.runNo) + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">วันที่พบ</span><input class="ms-input" type="date" data-5s-field="foundDate" value="' + d.foundDate + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">เวลาที่พบ</span><input class="ms-input" type="time" data-5s-field="foundTime" value="' + d.foundTime + '" /></label>' +
+            "</div>" +
+            '<div class="ms-field-row">' +
+              '<label class="ms-field"><span class="ms-label">สถานที่พบ</span><input class="ms-input" type="text" data-5s-field="location" value="' + esc(d.location) + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">หน่วยงาน</span><input class="ms-input" type="text" data-5s-field="department" value="' + esc(d.department) + '" /></label>' +
+            "</div>" +
+            '<div class="ms-field-row">' +
+              '<label class="ms-field"><span class="ms-label">ฝ่าย</span><input class="ms-input" type="text" data-5s-field="division" value="' + esc(d.division) + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">พื้นที่ผู้รับผิดชอบ</span><input class="ms-input" type="text" data-5s-field="responsible" value="' + esc(d.responsible) + '" /></label>' +
+            "</div>" +
+
+            '<div class="ms-field-row">' +
+              fiveSPhotoSlot("beforePhoto", "2. สภาพก่อนแก้ไข", d.beforePhoto) +
+              fiveSPhotoSlot("afterPhoto", "3. สภาพหลังแก้ไข", d.afterPhoto) +
+            "</div>" +
+
+            '<div class="ms-field"><span class="ms-label">รายละเอียดแนวทางการแก้ไข (ที่เกิดขึ้น)</span>' +
+              '<div class="ms-5s-actions">' + actionsRows + "</div>" +
+              '<button type="button" class="ms-btn ms-btn-ghost" data-action="5s-add-action">' + ICONS.plus + " เพิ่มแนวทาง</button>" +
+            "</div>" +
+
+            '<div class="ms-field-row">' +
+              '<label class="ms-field"><span class="ms-label">% ความสำเร็จเทียบกับพื้นที่ทั้งหมด</span><input class="ms-input" type="number" min="0" max="100" data-5s-field="percentVsTotal" value="' + d.percentVsTotal + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">กำหนดเสร็จ</span><input class="ms-input" type="date" data-5s-field="dueDate" value="' + d.dueDate + '" /></label>' +
+              '<label class="ms-field"><span class="ms-label">สถานะความสำเร็จ (%)</span><input class="ms-input" type="number" min="0" max="100" data-5s-field="successPercent" value="' + d.successPercent + '" /></label>' +
+            "</div>" +
+            (dr !== null ? '<div class="ms-progress-note">' + (dr < 0 ? "เลยกำหนดมาแล้ว " + Math.abs(dr) + " วัน" : "เหลือเวลาอีก " + dr + " วัน") + "</div>" : "") +
+
+            '<div class="ms-field"><span class="ms-label">ตรวจสอบพื้นที่ย้อนหลัง (สูงสุด 3 ครั้ง)</span>' +
+              '<div class="ms-5s-followups">' + followUpsHTML + "</div>" +
+            "</div>" +
+          "</div>" +
+          '<div class="ms-modal-foot">' + footLeft +
+            '<div class="ms-modal-foot-right">' +
+              (!isNew ? '<button class="ms-btn ms-btn-ghost" data-action="5s-download">' + ICONS.pdf + " PDF</button>" : "") +
+              '<button class="ms-btn ms-btn-ghost" data-action="5s-close">ยกเลิก</button>' +
+              '<button class="ms-btn ms-btn-primary" data-action="5s-save">บันทึก</button>' +
+            "</div>" +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function buildFiveSPrintArea(r) {
+    var dr = daysRemaining(r.dueDate);
+    var actionsRows = r.actions.filter(function (a) { return a.detail; }).map(function (a) {
+      return "<tr><td>" + esc(a.detail) + "</td><td>" + (a.dueDate ? displayDate(a.dueDate) : "-") + "</td><td>" + a.percent + "%</td></tr>";
+    }).join("");
+    var followUpsHTML = r.followUps.filter(function (f) { return f.photo; }).map(function (f) {
+      return '<div class="fs-followup"><h4>' + esc(f.label) + (f.date ? " (" + displayDate(f.date) + ")" : "") + "</h4><img src=\"" + photoSrc(f.photo) + "\" /></div>";
+    }).join("");
+
+    var printArea = document.getElementById("print-area");
+    if (!printArea) return;
+    printArea.innerHTML =
+      '<div class="fs-report">' +
+        "<h1>รายงานปัญหาพื้นที่ (5ส)</h1>" +
+        '<table class="fs-info">' +
+          "<tr><td><b>1. รายการ/สภาพปัญหา:</b> " + esc(r.itemName) + "</td><td><b>Run No.:</b> " + esc(r.runNo) + "</td></tr>" +
+          "<tr><td colspan=\"2\"><b>สภาพปัญหา:</b> " + esc(r.problemDesc) + "</td></tr>" +
+          "<tr><td><b>วันที่พบ:</b> " + (r.foundDate ? displayDate(r.foundDate) : "-") + " &nbsp; <b>เวลาที่พบ:</b> " + esc(r.foundTime) + "</td><td><b>สถานที่พบ:</b> " + esc(r.location) + "</td></tr>" +
+          "<tr><td><b>หน่วยงาน:</b> " + esc(r.department) + "</td><td><b>ฝ่าย:</b> " + esc(r.division) + "</td></tr>" +
+          "<tr><td colspan=\"2\"><b>พื้นที่ผู้รับผิดชอบ:</b> " + esc(r.responsible) + "</td></tr>" +
+        "</table>" +
+        '<div class="fs-photos-row">' +
+          '<div class="fs-photo-col"><h3>2. สภาพก่อนแก้ไข</h3>' + (r.beforePhoto ? '<img src="' + photoSrc(r.beforePhoto) + '" />' : "<p>—</p>") + "</div>" +
+          '<div class="fs-photo-col"><h3>3. สภาพหลังแก้ไข</h3>' + (r.afterPhoto ? '<img src="' + photoSrc(r.afterPhoto) + '" />' : "<p>—</p>") + "</div>" +
+          '<div class="fs-actions-col"><h3>รายละเอียดแนวทางการแก้ไข</h3><table><thead><tr><th>รายละเอียด</th><th>กำหนดเสร็จ</th><th>%</th></tr></thead><tbody>' + (actionsRows || "<tr><td colspan=\"3\">—</td></tr>") + "</tbody></table></div>" +
+        "</div>" +
+        '<table class="fs-status">' +
+          "<tr><td><b>% เทียบพื้นที่ทั้งหมด:</b> " + r.percentVsTotal + "%</td>" +
+          "<td><b>กำหนดเสร็จ:</b> " + (r.dueDate ? displayDate(r.dueDate) : "-") + (dr !== null ? " (" + (dr < 0 ? "เลย " + Math.abs(dr) + " วัน" : "เหลือ " + dr + " วัน") + ")" : "") + "</td>" +
+          "<td><b>สถานะความสำเร็จ:</b> " + r.successPercent + "%</td></tr>" +
+        "</table>" +
+        (followUpsHTML ? '<h3>การติดตามผล</h3><div class="fs-followups-row">' + followUpsHTML + "</div>" : "") +
+      "</div>";
   }
 
   function renderModal() {
@@ -615,13 +1049,13 @@
 
     var photos = d.photos || [];
     var thumbs = photos.map(function (src, i) {
-      return '<div class="ms-photo-thumb"><img src="' + src + '" alt="" /><button type="button" class="ms-icon-btn ms-photo-thumb-remove" data-action="remove-photo" data-index="' + i + '">' + ICONS.x + "</button></div>";
+      return '<div class="ms-photo-thumb"><img src="' + photoSrc(src) + '" alt="" /><button type="button" class="ms-icon-btn ms-photo-thumb-remove" data-action="remove-photo" data-index="' + i + '">' + ICONS.x + "</button></div>";
     }).join("");
     var photoField =
       '<div class="ms-field"><span class="ms-label">รูปประกอบ (' + photos.length + '/6)</span>' +
         '<div class="ms-photo-grid">' + thumbs +
           (photos.length < 6
-            ? '<label class="ms-photo-add">' + ICONS.camera + '<span>เพิ่มรูป</span><input type="file" accept="image/*" capture="environment" multiple data-action="pick-photo" style="display:none" /></label>'
+            ? '<label class="ms-photo-add">' + ICONS.camera + '<span>เพิ่มรูป</span><input type="file" accept="image/*" multiple data-action="pick-photo" style="display:none" /></label>'
             : "") +
         "</div>" +
       "</div>";
@@ -687,7 +1121,7 @@
             statusLine +
             '<label class="ms-field"><span class="ms-label">Client ID</span><input class="ms-input" type="text" data-config="clientId" value="' + esc(s.clientId) + '" placeholder="xxxxxxxx.apps.googleusercontent.com" /></label>' +
             '<label class="ms-field"><span class="ms-label">Spreadsheet ID</span><input class="ms-input" type="text" data-config="spreadsheetId" value="' + esc(s.spreadsheetId) + '" placeholder="เช่น 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" /></label>' +
-            '<div class="ms-settings-help">คัดลอกจากลิงก์ชีต: docs.google.com/spreadsheets/d/<b>SPREADSHEET_ID</b>/edit — ข้อมูลจะถูกเก็บในแท็บที่ชื่อ “Sheet1” ของไฟล์นั้น</div>' +
+            '<div class="ms-settings-help">คัดลอกจากลิงก์ชีต: docs.google.com/spreadsheets/d/<b>SPREADSHEET_ID</b>/edit — งานเก็บในแท็บ “Sheet1” และรายการ 5ส เก็บในแท็บ “FiveS” (สร้างให้อัตโนมัติ) ส่วนรูปภาพจะอัปโหลดขึ้น Google Drive ของคุณเพื่อดูได้ทุกอุปกรณ์</div>' +
           "</div>" +
           '<div class="ms-modal-foot">' +
             (s.signedIn ? '<button class="ms-btn ms-btn-ghost" data-action="sheets-signout">ออกจากระบบ</button>' : '<span></span>') +
@@ -775,8 +1209,10 @@
     var tabs = [
       { key: "home", label: "หน้าหลัก", icon: ICONS.home },
       { key: "day", label: "รายวัน", icon: ICONS.day },
+      { key: "week", label: "รายสัปดาห์", icon: ICONS.week },
       { key: "month", label: "รายเดือน", icon: ICONS.month },
       { key: "year", label: "รายปี", icon: ICONS.year },
+      { key: "5s", label: "ตรวจ 5ส", icon: ICONS.checklist },
     ];
     var tabsHTML = tabs.map(function (tb) {
       return '<button class="ms-tab' + (state.view === tb.key ? " active" : "") + '" data-action="set-view" data-view="' + tb.key + '">' + tb.icon + " " + tb.label + "</button>";
@@ -785,8 +1221,10 @@
     var body = "";
     if (state.view === "home") body = renderHome();
     else if (state.view === "day") body = renderDay();
+    else if (state.view === "week") body = renderWeek();
     else if (state.view === "month") body = renderMonth();
     else if (state.view === "year") body = renderYear();
+    else if (state.view === "5s") body = renderFiveS();
 
     var syncBtnClass = "ms-icon-btn ms-sync-btn" + (state.sync.signedIn ? " connected" : "") + (state.sync.syncing ? " spinning" : "");
     var syncIcon = state.sync.syncing ? ICONS.sync : (state.sync.signedIn ? ICONS.cloud : ICONS.cloudOff);
@@ -798,7 +1236,9 @@
           '<div class="ms-header-actions">' +
             '<button class="ms-icon-btn" data-action="open-report" title="ดาวน์โหลด PDF สรุปแผนงาน">' + ICONS.pdf + "</button>" +
             '<button class="' + syncBtnClass + '" data-action="open-settings" title="ซิงก์กับ Google Sheets">' + syncIcon + "</button>" +
-            '<button class="ms-add-btn" data-action="add-task">' + ICONS.plus + " เพิ่มงาน</button>" +
+            (state.view === "5s"
+              ? '<button class="ms-add-btn" data-action="5s-add">' + ICONS.plus + " เพิ่มรายการ 5ส</button>"
+              : '<button class="ms-add-btn" data-action="add-task">' + ICONS.plus + " เพิ่มงาน</button>") +
           "</div>" +
         "</div>" +
         '<div class="ms-tabs">' + tabsHTML + "</div>" +
@@ -808,6 +1248,7 @@
     renderModal();
     document.getElementById("modal-root-2").innerHTML = state.settingsOpen ? renderSettingsModal() : "";
     document.getElementById("modal-root-3").innerHTML = state.report ? renderReportModal() : "";
+    document.getElementById("modal-root-4").innerHTML = state.fivesModal ? renderFiveSModal() : "";
   }
 
   /* ---------------- actions ---------------- */
@@ -817,6 +1258,7 @@
   }
   function openEdit(task) {
     state.modal = { isNew: false, draft: JSON.parse(JSON.stringify(task)), confirmDel: false, error: "" };
+    (task.photos || []).forEach(function (p) { if (p && p.indexOf("drive:") === 0) resolveDrivePhoto(p.slice(6)); });
     render();
   }
   function closeModal() { state.modal = null; render(); }
@@ -843,12 +1285,47 @@
     render();
   }
 
+  function open5sNew() {
+    state.fivesModal = { isNew: true, draft: emptyFiveSDraft(), confirmDel: false, error: "" };
+    render();
+  }
+  function open5sEdit(record) {
+    state.fivesModal = { isNew: false, draft: JSON.parse(JSON.stringify(record)), confirmDel: false, error: "" };
+    [record.beforePhoto, record.afterPhoto].concat((record.followUps || []).map(function (f) { return f.photo; })).forEach(function (p) {
+      if (p && p.indexOf("drive:") === 0) resolveDrivePhoto(p.slice(6));
+    });
+    render();
+  }
+  function close5sModal() { state.fivesModal = null; render(); }
+  function save5sModal() {
+    var d = state.fivesModal.draft;
+    if (!d.itemName || !d.itemName.trim()) { state.fivesModal.error = "กรุณาใส่รายการ/สภาพปัญหา"; render(); return; }
+    if (state.fivesModal.isNew) {
+      d.id = uid();
+      state.fiveS.push(d);
+    } else {
+      state.fiveS = state.fiveS.map(function (r) { return r.id === d.id ? d : r; });
+    }
+    persistFiveS();
+    state.fivesModal = null;
+    render();
+  }
+  function delete5sModal() {
+    var id = state.fivesModal.draft.id;
+    state.fiveS = state.fiveS.filter(function (r) { return r.id !== id; });
+    persistFiveS();
+    state.fivesModal = null;
+    render();
+  }
+  function find5s(id) { for (var i = 0; i < state.fiveS.length; i++) if (state.fiveS[i].id === id) return state.fiveS[i]; return null; }
+
   /* ---------------- event delegation ---------------- */
   function findTask(id) { for (var i = 0; i < state.tasks.length; i++) if (state.tasks[i].id === id) return state.tasks[i]; return null; }
 
   document.addEventListener("click", function (e) {
     if (e.target.id === "report-overlay") { state.report = null; render(); return; }
     if (e.target.id === "settings-overlay") { state.settingsOpen = false; render(); return; }
+    if (e.target.id === "5s-overlay") { state.fivesModal = null; render(); return; }
     if (e.target.classList && e.target.classList.contains("ms-modal-overlay")) { closeModal(); return; }
 
     var el = e.target.closest("[data-action]");
@@ -860,12 +1337,33 @@
       case "report-close": state.report = null; render(); break;
       case "report-download": buildPrintArea(); setTimeout(function () { window.print(); }, 60); break;
 
+      case "5s-add": open5sNew(); break;
+      case "5s-open": { var r5 = find5s(el.getAttribute("data-id")); if (r5) open5sEdit(r5); break; }
+      case "5s-close": close5sModal(); break;
+      case "5s-save": save5sModal(); break;
+      case "5s-delete-ask": state.fivesModal.confirmDel = true; render(); break;
+      case "5s-delete-cancel": state.fivesModal.confirmDel = false; render(); break;
+      case "5s-delete-confirm": delete5sModal(); break;
+      case "5s-download": buildFiveSPrintArea(state.fivesModal.draft); setTimeout(function () { window.print(); }, 60); break;
+      case "5s-add-action": state.fivesModal.draft.actions.push({ detail: "", dueDate: "", percent: 0 }); render(); break;
+      case "5s-remove-action": {
+        var ai = Number(el.getAttribute("data-index"));
+        state.fivesModal.draft.actions.splice(ai, 1);
+        render(); break;
+      }
+      case "5s-remove-photo": {
+        var pf = el.getAttribute("data-field");
+        if (pf.indexOf("followUps.") === 0) { state.fivesModal.draft.followUps[Number(pf.split(".")[1])].photo = ""; }
+        else { state.fivesModal.draft[pf] = ""; }
+        render(); break;
+      }
+
       case "open-settings": state.settingsOpen = true; render(); break;
       case "settings-close": state.settingsOpen = false; render(); break;
       case "sheets-connect":
         saveConfig();
         if (!hasSyncConfig()) { state.sync.lastError = "กรุณากรอก Client ID และ Spreadsheet ID ให้ครบ"; render(); break; }
-        signIn(true);
+        if (state.sync.signedIn) { pushToSheet(); pushFiveSToSheet(); } else { signIn(true); }
         break;
       case "sheets-signout": signOut(); break;
 
@@ -876,6 +1374,10 @@
       case "day-prev": state.dateKey = addDays(state.dateKey, -1); render(); break;
       case "day-next": state.dateKey = addDays(state.dateKey, 1); render(); break;
       case "day-today": state.dateKey = todayKey(); render(); break;
+
+      case "week-prev": state.weekCursor = addDays(state.weekCursor || mondayOf(state.dateKey), -7); render(); break;
+      case "week-next": state.weekCursor = addDays(state.weekCursor || mondayOf(state.dateKey), 7); render(); break;
+      case "week-today": state.weekCursor = mondayOf(todayKey()); render(); break;
 
       case "month-prev": {
         var mp = state.monthCursor.month - 1, yp = state.monthCursor.year;
@@ -940,6 +1442,34 @@
       render();
       return;
     }
+    if (el.getAttribute("data-action") === "group-filter") {
+      state.groupFilter[el.getAttribute("data-group")] = el.value;
+      render();
+      return;
+    }
+
+    if (state.fivesModal) {
+      var d5 = state.fivesModal.draft;
+      var f5 = el.getAttribute("data-5s-field");
+      if (f5) {
+        d5[f5] = (el.type === "number") ? Number(el.value) : el.value;
+        if (state.fivesModal.error) state.fivesModal.error = "";
+        return;
+      }
+      var actionField = el.getAttribute("data-5s-action");
+      if (actionField) {
+        var aIdx = Number(el.getAttribute("data-index"));
+        d5.actions[aIdx][actionField] = (actionField === "percent") ? Number(el.value) : el.value;
+        return;
+      }
+      var fuField = el.getAttribute("data-5s-followup");
+      if (fuField) {
+        var fIdx = Number(el.getAttribute("data-index"));
+        d5.followUps[fIdx][fuField] = el.value;
+        return;
+      }
+    }
+
     if (!state.modal) return;
     var field = el.getAttribute("data-field");
     if (field === "start") {
@@ -957,6 +1487,33 @@
 
   document.addEventListener("change", function (e) {
     var el = e.target;
+    var action5s = el.getAttribute("data-action");
+
+    if (action5s === "5s-pick-photo" && state.fivesModal) {
+      var file5 = el.files && el.files[0];
+      if (!file5) return;
+      var field5 = el.getAttribute("data-field");
+      var reader5 = new FileReader();
+      reader5.onload = function () {
+        var dataUrl5 = String(reader5.result);
+        var d5 = state.fivesModal.draft;
+        var setPhoto5 = function (value) {
+          if (field5.indexOf("followUps.") === 0) { d5.followUps[Number(field5.split(".")[1])].photo = value; }
+          else { d5[field5] = value; }
+          render();
+        };
+        setPhoto5(dataUrl5);
+        if (state.sync.signedIn) {
+          uploadPhotoToDrive(dataUrl5, "5s_" + field5.replace(/\W+/g, "_") + "_" + Date.now() + ".jpg")
+            .then(function (fileId) { setPhoto5("drive:" + fileId); })
+            .catch(function () { /* keep local copy on upload failure */ });
+        }
+      };
+      reader5.readAsDataURL(file5);
+      el.value = "";
+      return;
+    }
+
     if (el.getAttribute("data-action") !== "pick-photo") return;
     var files = el.files ? Array.prototype.slice.call(el.files) : [];
     if (!files.length || !state.modal) return;
@@ -966,8 +1523,16 @@
       var reader = new FileReader();
       reader.onload = function () {
         draft.photos = draft.photos || [];
+        var slotIndex = draft.photos.length;
         draft.photos.push(String(reader.result));
         render();
+        if (state.sync.signedIn) {
+          uploadPhotoToDrive(String(reader.result), "task_" + Date.now() + "_" + slotIndex + ".jpg")
+            .then(function (fileId) {
+              if (draft.photos[slotIndex] !== undefined) { draft.photos[slotIndex] = "drive:" + fileId; render(); }
+            })
+            .catch(function () { /* keep local copy on upload failure */ });
+        }
       };
       reader.readAsDataURL(file);
     });
@@ -977,6 +1542,8 @@
   /* ---------------- init ---------------- */
   loadConfig();
   loadTasks();
+  loadFiveS();
+  state.weekCursor = mondayOf(todayKey());
   render();
   if (hasSyncConfig()) {
     var savedToken = loadToken();
@@ -984,6 +1551,7 @@
       state.sync.accessToken = savedToken.token;
       state.sync.signedIn = true;
       pullFromSheet();
+      pullFiveSFromSheet();
     } else {
       window.addEventListener("load", function () {
         setTimeout(function () { signIn(false); }, 300);
