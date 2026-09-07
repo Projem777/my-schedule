@@ -4,6 +4,7 @@
 (function () {
   "use strict";
 
+  var APP_VERSION = "v11";
   var STORAGE_KEY = "my_schedule_tasks_v1";
   var FIVES_STORAGE_KEY = "my_schedule_5s_v1";
   var CONFIG_KEY = "my_schedule_sync_config_v1";
@@ -1248,7 +1249,7 @@
     app.innerHTML =
       '<div class="ms-root">' +
         '<div class="ms-header">' +
-          '<div class="ms-title-wrap"><span class="ms-title">my_schedule</span><span class="ms-subtitle">วางแผนงานรายวัน รายเดือน รายปี</span></div>' +
+          '<div class="ms-title-wrap"><span class="ms-title">my_schedule</span><span class="ms-subtitle">วางแผนงานรายวัน รายเดือน รายปี · ' + APP_VERSION + "</span></div>" +
           '<div class="ms-header-actions">' +
             '<button class="ms-icon-btn" data-action="open-report" title="ดาวน์โหลด PDF สรุปแผนงาน">' + ICONS.pdf + "</button>" +
             '<button class="' + syncBtnClass + '" data-action="open-settings" title="ซิงก์กับ Google Sheets">' + syncIcon + "</button>" +
