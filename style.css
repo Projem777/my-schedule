@@ -83,12 +83,14 @@ button, input{ font-family:inherit; }
 .ms-stepper-value{ font-family:'Kanit',sans-serif; font-weight:700; font-size:16px; min-width:18px; text-align:center; }
 .ms-range{ width:100%; }
 .ms-form-error{ color:#E5484D; font-size:12px; font-weight:600; background:#FDEDEE; padding:8px 10px; border-radius:8px; }
+.ms-form-warning{ color:#8A5A00; font-size:12px; font-weight:600; background:#FFF4E5; padding:8px 10px; border-radius:8px; }
 .ms-progress-note{ font-size:11px; color:var(--ink-soft); margin-top:6px; }
 .ms-photo-grid{ display:flex; flex-wrap:wrap; gap:8px; }
 .ms-photo-thumb{ position:relative; width:76px; height:76px; border-radius:10px; overflow:hidden; border:1px solid var(--border); flex-shrink:0; }
 .ms-photo-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
 .ms-photo-thumb-remove{ position:absolute; top:3px; right:3px; width:22px; height:22px; background:rgba(27,32,54,.65); border:none; color:#fff; }
 .ms-photo-add{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:76px; height:76px; border:1.5px dashed var(--border); border-radius:10px; color:var(--ink-soft); cursor:pointer; font-size:10px; flex-shrink:0; }
+.ms-photo-add-row{ display:flex; gap:8px; }
 .ms-report-preview{ display:flex; flex-direction:column; gap:12px; max-height:280px; overflow-y:auto; }
 .ms-report-day{ display:flex; flex-direction:column; gap:6px; }
 .ms-report-day-title{ font-family:'Kanit',sans-serif; font-weight:700; font-size:13px; }
