@@ -46,6 +46,7 @@
     sync: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.3M3 12a9 9 0 0 1 15.5-6.3M3 3v6h6M21 21v-6h-6"/></svg>',
     camera: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
     pdf: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>',
+    upload: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>',
   };
 
   /* ---------------- helpers ---------------- */
@@ -875,8 +876,12 @@
         '<span class="ms-label">' + esc(label) + "</span>" +
         (photoUrl
           ? '<div class="ms-photo-thumb ms-5s-photo-thumb"><img src="' + photoSrc(photoUrl) + '" alt="" /><button type="button" class="ms-icon-btn ms-photo-thumb-remove" data-action="5s-remove-photo" data-field="' + fieldName + '">' + ICONS.x + "</button></div>"
-          : '<label class="ms-photo-add">' + ICONS.camera + "<span>ถ่ายรูป</span>" +
-            '<input type="file" accept="image/*" data-action="5s-pick-photo" data-field="' + fieldName + '" style="display:none" /></label>'
+          : '<div class="ms-photo-add-row">' +
+              '<label class="ms-photo-add">' + ICONS.camera + "<span>ถ่ายรูป</span>" +
+                '<input type="file" accept="image/*" capture="environment" data-action="5s-pick-photo" data-field="' + fieldName + '" style="display:none" /></label>' +
+              '<label class="ms-photo-add">' + ICONS.upload + "<span>อัปโหลด</span>" +
+                '<input type="file" accept="image/*" data-action="5s-pick-photo" data-field="' + fieldName + '" style="display:none" /></label>' +
+            "</div>"
         ) +
       "</div>"
     );
@@ -958,6 +963,8 @@
             '<div class="ms-field"><span class="ms-label">ตรวจสอบพื้นที่ย้อนหลัง (สูงสุด 3 ครั้ง)</span>' +
               '<div class="ms-5s-followups">' + followUpsHTML + "</div>" +
             "</div>" +
+            (m.error ? '<div class="ms-form-error">' + esc(m.error) + "</div>" : "") +
+            (m.uploadWarning ? '<div class="ms-form-warning">' + esc(m.uploadWarning) + "</div>" : "") +
           "</div>" +
           '<div class="ms-modal-foot">' + footLeft +
             '<div class="ms-modal-foot-right">' +
@@ -1055,7 +1062,8 @@
       '<div class="ms-field"><span class="ms-label">รูปประกอบ (' + photos.length + '/6)</span>' +
         '<div class="ms-photo-grid">' + thumbs +
           (photos.length < 6
-            ? '<label class="ms-photo-add">' + ICONS.camera + '<span>เพิ่มรูป</span><input type="file" accept="image/*" multiple data-action="pick-photo" style="display:none" /></label>'
+            ? '<label class="ms-photo-add">' + ICONS.camera + '<span>ถ่ายรูป</span><input type="file" accept="image/*" capture="environment" data-action="pick-photo" style="display:none" /></label>' +
+              '<label class="ms-photo-add">' + ICONS.upload + '<span>อัปโหลด</span><input type="file" accept="image/*" multiple data-action="pick-photo" style="display:none" /></label>'
             : "") +
         "</div>" +
       "</div>";
@@ -1090,6 +1098,7 @@
             progressField +
             photoField +
             (state.modal.error ? '<div class="ms-form-error">' + esc(state.modal.error) + "</div>" : "") +
+            (state.modal.uploadWarning ? '<div class="ms-form-warning">' + esc(state.modal.uploadWarning) + "</div>" : "") +
           "</div>" +
           '<div class="ms-modal-foot">' + footLeft +
             '<div class="ms-modal-foot-right"><button class="ms-btn ms-btn-ghost" data-action="close">ยกเลิก</button><button class="ms-btn ms-btn-primary" data-action="save"' + (state.modal.saving ? " disabled" : "") + ">" + (state.modal.saving ? "กำลังอัปโหลดรูป..." : "บันทึก") + "</button></div>" +
@@ -1529,8 +1538,14 @@
           if (state.sync.signedIn) {
             uploadPhotoToDrive(dataUrl5, "5s_" + field5.replace(/\W+/g, "_") + "_" + Date.now() + ".jpg")
               .then(function (fileId) { setPhoto5("drive:" + fileId); resolveUp(); })
-              .catch(function () { resolveUp(); /* keep local copy on upload failure */ });
+              .catch(function (err) {
+                m5.uploadWarning = "อัปโหลดรูปขึ้น Drive ไม่สำเร็จ (" + ((err && err.message) || "unknown error") + ") — บันทึกไว้ในเครื่องนี้เท่านั้น จะไม่ซิงก์ไปเครื่องอื่น";
+                if (state.fivesModal === m5) render();
+                resolveUp();
+              });
           } else {
+            m5.uploadWarning = "ยังไม่ได้เชื่อมต่อ Google Sheets/Drive — รูปนี้จะถูกเก็บไว้ในเครื่องนี้เท่านั้น";
+            if (state.fivesModal === m5) render();
             resolveUp();
           }
         };
@@ -1562,8 +1577,14 @@
                 if (draft.photos[slotIndex] !== undefined) { draft.photos[slotIndex] = "drive:" + fileId; if (state.modal === mT) render(); }
                 resolveUp();
               })
-              .catch(function () { resolveUp(); /* keep local copy on upload failure */ });
+              .catch(function (err) {
+                mT.uploadWarning = "อัปโหลดรูปขึ้น Drive ไม่สำเร็จ (" + ((err && err.message) || "unknown error") + ") — บันทึกไว้ในเครื่องนี้เท่านั้น จะไม่ซิงก์ไปเครื่องอื่น";
+                if (state.modal === mT) render();
+                resolveUp();
+              });
           } else {
+            mT.uploadWarning = "ยังไม่ได้เชื่อมต่อ Google Sheets/Drive — รูปนี้จะถูกเก็บไว้ในเครื่องนี้เท่านั้น";
+            if (state.modal === mT) render();
             resolveUp();
           }
         };
