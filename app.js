@@ -963,7 +963,7 @@
             '<div class="ms-modal-foot-right">' +
               (!isNew ? '<button class="ms-btn ms-btn-ghost" data-action="5s-download">' + ICONS.pdf + " PDF</button>" : "") +
               '<button class="ms-btn ms-btn-ghost" data-action="5s-close">ยกเลิก</button>' +
-              '<button class="ms-btn ms-btn-primary" data-action="5s-save">บันทึก</button>' +
+              '<button class="ms-btn ms-btn-primary" data-action="5s-save"' + (m.saving ? " disabled" : "") + ">" + (m.saving ? "กำลังอัปโหลดรูป..." : "บันทึก") + "</button>" +
             "</div>" +
           "</div>" +
         "</div>" +
@@ -1092,7 +1092,7 @@
             (state.modal.error ? '<div class="ms-form-error">' + esc(state.modal.error) + "</div>" : "") +
           "</div>" +
           '<div class="ms-modal-foot">' + footLeft +
-            '<div class="ms-modal-foot-right"><button class="ms-btn ms-btn-ghost" data-action="close">ยกเลิก</button><button class="ms-btn ms-btn-primary" data-action="save">บันทึก</button></div>' +
+            '<div class="ms-modal-foot-right"><button class="ms-btn ms-btn-ghost" data-action="close">ยกเลิก</button><button class="ms-btn ms-btn-primary" data-action="save"' + (state.modal.saving ? " disabled" : "") + ">" + (state.modal.saving ? "กำลังอัปโหลดรูป..." : "บันทึก") + "</button></div>" +
           "</div>" +
         "</div>" +
       "</div>";
@@ -1253,21 +1253,32 @@
 
   /* ---------------- actions ---------------- */
   function openNew(prefillDate) {
-    state.modal = { isNew: true, draft: emptyDraft(prefillDate), confirmDel: false, error: "" };
+    state.modal = { isNew: true, draft: emptyDraft(prefillDate), confirmDel: false, error: "", pendingUploads: [] };
     render();
   }
   function openEdit(task) {
-    state.modal = { isNew: false, draft: JSON.parse(JSON.stringify(task)), confirmDel: false, error: "" };
+    state.modal = { isNew: false, draft: JSON.parse(JSON.stringify(task)), confirmDel: false, error: "", pendingUploads: [] };
     (task.photos || []).forEach(function (p) { if (p && p.indexOf("drive:") === 0) resolveDrivePhoto(p.slice(6)); });
     render();
   }
   function closeModal() { state.modal = null; render(); }
 
   function saveModal() {
-    var d = state.modal.draft;
-    if (!d.name || !d.name.trim()) { state.modal.error = "กรุณาใส่ชื่องาน"; render(); return; }
-    if (d.end < d.start) { state.modal.error = "เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม"; render(); return; }
-    if (state.modal.isNew) {
+    var m = state.modal;
+    var d = m.draft;
+    if (!d.name || !d.name.trim()) { m.error = "กรุณาใส่ชื่องาน"; render(); return; }
+    if (d.end < d.start) { m.error = "เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม"; render(); return; }
+    var pending = m.pendingUploads || [];
+    if (pending.length) {
+      m.saving = true; render();
+      Promise.all(pending).then(function () { if (state.modal === m) finalizeSaveModal(m); });
+      return;
+    }
+    finalizeSaveModal(m);
+  }
+  function finalizeSaveModal(m) {
+    var d = m.draft;
+    if (m.isNew) {
       d.id = uid();
       state.tasks.push(d);
     } else {
@@ -1286,11 +1297,11 @@
   }
 
   function open5sNew() {
-    state.fivesModal = { isNew: true, draft: emptyFiveSDraft(), confirmDel: false, error: "" };
+    state.fivesModal = { isNew: true, draft: emptyFiveSDraft(), confirmDel: false, error: "", pendingUploads: [] };
     render();
   }
   function open5sEdit(record) {
-    state.fivesModal = { isNew: false, draft: JSON.parse(JSON.stringify(record)), confirmDel: false, error: "" };
+    state.fivesModal = { isNew: false, draft: JSON.parse(JSON.stringify(record)), confirmDel: false, error: "", pendingUploads: [] };
     [record.beforePhoto, record.afterPhoto].concat((record.followUps || []).map(function (f) { return f.photo; })).forEach(function (p) {
       if (p && p.indexOf("drive:") === 0) resolveDrivePhoto(p.slice(6));
     });
@@ -1298,9 +1309,20 @@
   }
   function close5sModal() { state.fivesModal = null; render(); }
   function save5sModal() {
-    var d = state.fivesModal.draft;
-    if (!d.itemName || !d.itemName.trim()) { state.fivesModal.error = "กรุณาใส่รายการ/สภาพปัญหา"; render(); return; }
-    if (state.fivesModal.isNew) {
+    var m = state.fivesModal;
+    var d = m.draft;
+    if (!d.itemName || !d.itemName.trim()) { m.error = "กรุณาใส่รายการ/สภาพปัญหา"; render(); return; }
+    var pending = m.pendingUploads || [];
+    if (pending.length) {
+      m.saving = true; render();
+      Promise.all(pending).then(function () { if (state.fivesModal === m) finalizeSave5s(m); });
+      return;
+    }
+    finalizeSave5s(m);
+  }
+  function finalizeSave5s(m) {
+    var d = m.draft;
+    if (m.isNew) {
       d.id = uid();
       state.fiveS.push(d);
     } else {
@@ -1493,23 +1515,29 @@
       var file5 = el.files && el.files[0];
       if (!file5) return;
       var field5 = el.getAttribute("data-field");
-      var reader5 = new FileReader();
-      reader5.onload = function () {
-        var dataUrl5 = String(reader5.result);
-        var d5 = state.fivesModal.draft;
-        var setPhoto5 = function (value) {
-          if (field5.indexOf("followUps.") === 0) { d5.followUps[Number(field5.split(".")[1])].photo = value; }
-          else { d5[field5] = value; }
-          render();
+      var m5 = state.fivesModal;
+      var uploadPromise5 = new Promise(function (resolveUp) {
+        var reader5 = new FileReader();
+        reader5.onload = function () {
+          var dataUrl5 = String(reader5.result);
+          var setPhoto5 = function (value) {
+            if (field5.indexOf("followUps.") === 0) { m5.draft.followUps[Number(field5.split(".")[1])].photo = value; }
+            else { m5.draft[field5] = value; }
+            if (state.fivesModal === m5) render();
+          };
+          setPhoto5(dataUrl5);
+          if (state.sync.signedIn) {
+            uploadPhotoToDrive(dataUrl5, "5s_" + field5.replace(/\W+/g, "_") + "_" + Date.now() + ".jpg")
+              .then(function (fileId) { setPhoto5("drive:" + fileId); resolveUp(); })
+              .catch(function () { resolveUp(); /* keep local copy on upload failure */ });
+          } else {
+            resolveUp();
+          }
         };
-        setPhoto5(dataUrl5);
-        if (state.sync.signedIn) {
-          uploadPhotoToDrive(dataUrl5, "5s_" + field5.replace(/\W+/g, "_") + "_" + Date.now() + ".jpg")
-            .then(function (fileId) { setPhoto5("drive:" + fileId); })
-            .catch(function () { /* keep local copy on upload failure */ });
-        }
-      };
-      reader5.readAsDataURL(file5);
+        reader5.readAsDataURL(file5);
+      });
+      m5.pendingUploads = m5.pendingUploads || [];
+      m5.pendingUploads.push(uploadPromise5);
       el.value = "";
       return;
     }
@@ -1517,24 +1545,32 @@
     if (el.getAttribute("data-action") !== "pick-photo") return;
     var files = el.files ? Array.prototype.slice.call(el.files) : [];
     if (!files.length || !state.modal) return;
-    var draft = state.modal.draft;
+    var mT = state.modal;
+    var draft = mT.draft;
     var room = Math.max(0, 6 - (draft.photos ? draft.photos.length : 0));
     files.slice(0, room).forEach(function (file) {
-      var reader = new FileReader();
-      reader.onload = function () {
-        draft.photos = draft.photos || [];
-        var slotIndex = draft.photos.length;
-        draft.photos.push(String(reader.result));
-        render();
-        if (state.sync.signedIn) {
-          uploadPhotoToDrive(String(reader.result), "task_" + Date.now() + "_" + slotIndex + ".jpg")
-            .then(function (fileId) {
-              if (draft.photos[slotIndex] !== undefined) { draft.photos[slotIndex] = "drive:" + fileId; render(); }
-            })
-            .catch(function () { /* keep local copy on upload failure */ });
-        }
-      };
-      reader.readAsDataURL(file);
+      var uploadPromiseT = new Promise(function (resolveUp) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          draft.photos = draft.photos || [];
+          var slotIndex = draft.photos.length;
+          draft.photos.push(String(reader.result));
+          if (state.modal === mT) render();
+          if (state.sync.signedIn) {
+            uploadPhotoToDrive(String(reader.result), "task_" + Date.now() + "_" + slotIndex + ".jpg")
+              .then(function (fileId) {
+                if (draft.photos[slotIndex] !== undefined) { draft.photos[slotIndex] = "drive:" + fileId; if (state.modal === mT) render(); }
+                resolveUp();
+              })
+              .catch(function () { resolveUp(); /* keep local copy on upload failure */ });
+          } else {
+            resolveUp();
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+      mT.pendingUploads = mT.pendingUploads || [];
+      mT.pendingUploads.push(uploadPromiseT);
     });
     el.value = "";
   });
