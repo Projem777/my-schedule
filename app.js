@@ -258,6 +258,7 @@
   var drivePending = {};
 
   function uploadPhotoToDrive(dataUrl, filename) {
+    if (!state.sync.accessToken) return Promise.reject(new Error("ไม่มี access token (ยังไม่ได้เข้าสู่ระบบ)"));
     return fetch(dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
       var metadata = { name: filename, mimeType: blob.type || "image/jpeg" };
       var form = new FormData();
@@ -268,9 +269,15 @@
         headers: { Authorization: "Bearer " + state.sync.accessToken },
         body: form,
       }).then(function (r) {
-        if (!r.ok) throw new Error("Drive upload failed");
+        if (!r.ok) {
+          return r.json().catch(function () { return {}; }).then(function (e) {
+            throw new Error("HTTP " + r.status + " " + r.statusText + (e.error && e.error.message ? " — " + e.error.message : ""));
+          });
+        }
         return r.json();
       }).then(function (json) { return json.id; });
+    }).catch(function (err) {
+      throw new Error((err && err.message) ? err.message : "เชื่อมต่อเครือข่ายไม่สำเร็จ (network error / CORS)");
     });
   }
 
